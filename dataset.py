@@ -149,6 +149,13 @@ def create_error_pattern(num_error = 1, dataset_path=None):
 # Received Pattern
 
 def create_received_pattern(message_cnt, snrdB, test):
+    if not os.path.exists('Dataset'):
+        os.makedirs('Dataset')
+        if not os.path.exists('Dataset/Train'):
+            os.makedirs('Dataset/Train')
+        if not os.path.exists('Dataset/Test'):
+            os.makedirs('Dataset/Test')
+            
     M = 2                            # M-PSK modulation
     rate = 1/2                       # code rate
     k = np.log2(M)                  # number of bit per modulation symbol
