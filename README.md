@@ -5,4 +5,4 @@
 執行流程:
 1. gen_data.py 生成train data, test data
 2. config.ini 內設定實驗參數
-3. 執行main.py
+3. 執行main.py或main.ipynb
