@@ -29,9 +29,9 @@ def test(device, model, data_path, cond, rand):
 
             if cond: # Conditional training
                 code_info = data[2].to(device)
-                if rand:
-                    random_indices = torch.randint(0, len(ds.trellises_info), (len(code_info),)).to(device)
-                    info = torch.zeros(len(code_info), len(ds.trellises_info)).to(device)
+                if rand:  # Random create one-hot code
+                    random_indices = torch.randint(0, len(codes), len(code_info,)).to(device)
+                    info = torch.zeros(len(code_info), len(codes)).to(device)
                     info.scatter_(1, random_indices.unsqueeze(1), 1)
                     code_info = info.float()
                 else:
