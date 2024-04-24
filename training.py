@@ -7,6 +7,7 @@ import utils
 import config as cf
 import dataset as ds
 import model as md
+from config import config
 
 def train(device, config, dataset, model, model_path, cond, rand):
     codes = torch.tensor(cf.codes).to(device)
@@ -25,7 +26,7 @@ def train(device, config, dataset, model, model_path, cond, rand):
 
     while True:
         epoch += 1
-        ACC, BER = 0, 0
+        BER = 0
         train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
 
         for batch_idx, data in enumerate(train_loader):
@@ -66,7 +67,7 @@ def train(device, config, dataset, model, model_path, cond, rand):
 
         # Calculate BER per epoch
         BER = BER / (len(train_loader.dataset) * 12)
-        print(f"Epoch {epoch} Result: ACC: {ACC}, BER: {BER}")
+        print(f"Epoch {epoch} , BER: {BER}")
 
         if BER < BER_best:
             BER_best = BER
@@ -105,5 +106,3 @@ def train_model(device, config, dir, SNR, model_idx, rand=False):
     with open(records_path, 'wb') as f:
         print(f"Saving records: {records_path}")
         pickle.dump(losses, f)
-
-    
