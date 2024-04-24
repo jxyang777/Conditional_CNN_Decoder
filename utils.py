@@ -96,26 +96,25 @@ def create_rec_dir():
 
     return dir
 
-def draw_loss(dir, arch_idx):
-    arch = ['CNN/CNN', 'cCNN/cNN', 'cCNN/c2LCNN', 'cCNN/cALCNN', 'cCNN/cCNN_cat_ft']
+def draw_loss(dir, model_idx, SNR_range):
+    model_names = ['CNN', 'cALCNN', 'cCNN_cat_ft']
     CNN_losses = []
 
-    for SNR in range(2, 8):
-        path = f'records/train/{arch[arch_idx]}_{SNR}dB.pkl'
+    for SNR in SNR_range:
+        path = f'records/train/loss_{model_names[model_idx]}_{SNR}dB.pkl'
         with open(os.path.join(dir, path), 'rb') as f:
             results = pickle.load(f)
-            losses = np.array(results[0])
+            losses = np.array(results)
             CNN_losses.append(losses)
 
     CNN_losses = np.array(CNN_losses)
 
     x_values = range(1, CNN_losses.shape[1]+1)
-    # 繪製 loss curve
-    # plt.plot(x_values, CNN_losses[0], label='1 dB', color='red')
+
     for i in range(0, CNN_losses.shape[0]):
         plt.plot(x_values, CNN_losses[i], label=f'{i+2} dB')
     plt.xlabel('Batch Index')
     plt.ylabel('Average Loss')
-    plt.title('Batch Loss Curve')
+    plt.title(f'Batch Loss ({model_names[model_idx]})')
     plt.legend()
     plt.show()
