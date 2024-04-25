@@ -7,8 +7,6 @@ import torch
 from torch.utils.data import Dataset
 import csv
 
-import viterbi
-
 # Trellis
 trellis_213 = cc.Trellis(memory=np.array(2, ndmin=1), g_matrix=np.array((0o5, 0o7), ndmin=2))
 trellis_215 = cc.Trellis(memory=np.array(4, ndmin=1), g_matrix=np.array((0o23, 0o33), ndmin=2))
