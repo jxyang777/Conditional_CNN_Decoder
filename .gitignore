@@ -1,0 +1,9 @@
+results/
+wandb/
+__pycache__/
+
+main.py
+test.py
+code_mix.ipynb
+code_mix copy.ipynb
+test.ipynb
