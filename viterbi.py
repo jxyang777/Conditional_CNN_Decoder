@@ -15,10 +15,15 @@ trellises = [trellis_213, trellis_215, trellis_217, trellis_219]
 
 def awgn(signal, snr_dB, rate=1):
     snr_linear = 10**(snr_dB / 10.0)
-    power = np.mean(np.abs(signal)**2)
-    noise_power = power  / (snr_linear/ rate)
-    noise = np.sqrt(noise_power) * (np.random.randn(len(signal)) + 1j * np.random.randn(len(signal)))
+    signal_power = np.mean(np.abs(signal)**2)
+    noise_power = signal_power * rate /snr_linear
+    noise = np.sqrt(noise_power) * np.random.randn(len(signal))
     return signal + noise
+
+def BER_calc(a, b):
+    num_ber = np.sum(a != b)
+    ber = num_ber / len(a)
+    return int(num_ber), ber
 
 def simulate(args):
     snrdB, N, N_c, trellis, modem, rate = args
@@ -55,10 +60,6 @@ def simulate(args):
     mean_BER_uncoded = BER_uncoded.mean()
     return (mean_BER_hard, mean_BER_uncoded)
 
-def BER_calc(a, b):
-    num_ber = np.sum(a != b)
-    ber = num_ber / len(a)
-    return int(num_ber), ber
 
 N = 12                         # number of bits per block
 M = 2                          # modulation order (BPSK)
@@ -101,12 +102,15 @@ for i in range(4):
         pickle.dump(BERs_hard[i], f)
 
 BERs_hard_list = np.array(list(BERs_hard.values()))
-# BERs_uncoded_list = np.array(list(BERs_uncoded.values()))
-mean = np.mean(BERs_hard_list, axis=0)
-# mean_uncoded = np.mean(BERs_uncoded_list, axis=0)
+BER_hard_mix = np.mean(BERs_hard_list, axis=0)
+print(f"Hard Mix BER:\n{BER_hard_mix}\n")
+
+BERs_uncoded_list = np.array(list(BERs_uncoded.values()))
+BER_uncoded_mix = np.mean(BERs_uncoded_list, axis=0)
+print(f"Uncoded Mix BER:\n{BER_uncoded_mix}\n")
 
 rec_path = f"Dataset/Test/code_mix/hard_BER.pkl"
 with open(rec_path, 'wb') as f:
-    pickle.dump(mean, f)
+    pickle.dump(BER_hard_mix, f)
 
 print(f"Simulation completed in {end_time - start_time:.2f} seconds.")

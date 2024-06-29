@@ -138,8 +138,6 @@ def load_BER_uncoded(code_name):
     BERs_uncoded = []
     with open(f'Dataset/Test/{code_name}/uncoded_BER.pkl', 'rb') as f:
         BERs_uncoded = pickle.load(f)
-    for i in range(len(BERs_uncoded)):
-        BERs_uncoded[i] /= 12
     return BERs_uncoded
 
 def load_BER_hard(code_name):
@@ -284,7 +282,7 @@ def draw_BER_compare(result_dir, BERs_uncoded, BERs_hard, model_idx_1, model_idx
     plt.savefig(f"{result_dir}/figures/BER_{res_name_1}_vs_{res_name_2}_{test_code}.jpg")
     plt.show()
 
-def draw_BER_compare_combine(result_dir, BERs_uncoded, BERs_hard, model_idx_1, model_idx_t, test_code, train_range, test_range):
+def draw_BER_compare_multi(result_dir, BERs_uncoded, BERs_hard, model_idx_1, model_idx_t, test_code, train_range, test_range):
     model_name_1 = md.model_names[model_idx_1]  # CNN
     model_name_t = md.model_names[model_idx_t]  # CCNN_FM_T
     model_name_p = md.model_names[model_idx_t]  # CCNN_FM_P

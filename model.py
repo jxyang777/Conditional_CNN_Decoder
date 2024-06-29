@@ -3,14 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from config import config
-
-model_names = ['CNN', 
-              'CCNN_AL', 
-              'CCNN_FM', 
-              'CNN_2L', 
-              'CCNN_AL_2L', 
-              'CCNN_FM_2L', 
-              'CCNN_Joint'
+                            # Decoder model index 
+model_names = ['CNN',       # 0
+              'CCNN_AL',    # 1
+              'CCNN_FM',    # 2
+              'CNN_2L',     # 3
+              'CCNN_AL_2L', # 4
+              'CCNN_FM_2L', # 5
+              'CCNN_Joint'  # 6
               ]
 
 res_model_names = ['CNN',

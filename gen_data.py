@@ -35,9 +35,9 @@ def generate_data(test, message_cnt, code_type):
         print(f"Saving Uncoded BER: {uncoded_BER_path}")
         pickle.dump(BERs_uncoded, f)
     
-    with open(hard_BER_path, 'wb') as f:
-        print(f"Saving Hard BER: {hard_BER_path}")
-        pickle.dump(BERs_hard, f)
+    # with open(hard_BER_path, 'wb') as f:
+    #     print(f"Saving Hard BER: {hard_BER_path}")
+    #     pickle.dump(BERs_hard, f)
 
 def gen_data(test, message_cnt):
     if test: code_types = [1, 2, 3, 4, 5]
@@ -65,7 +65,7 @@ start_time = time.time()
 # generate_data(test=True, message_cnt=100000, code_type=5)
 
 # generate data using multiprocessing
-gen_data(test=False, message_cnt=100000)
-# gen_data(test=True, message_cnt=100000)
+# gen_data(test=False, message_cnt=100000)
+gen_data(test=True, message_cnt=100000)
 end_time = time.time()
 print(f"Time: {round((end_time - start_time)/60)} min {round((end_time - start_time)%60, 2)} sec")

@@ -133,9 +133,11 @@ def check_directory():
 
 def awgn(signal, snr_dB, rate):
     snr_linear = 10**(snr_dB / 10.0)
-    power = np.mean(np.abs(signal)**2)
-    noise_power = power * rate / snr_linear
-    noise = np.sqrt(noise_power / 2) * (np.random.randn(len(signal)) + 1j * np.random.randn(len(signal)))
+    signal_power = np.mean(np.abs(signal)**2)
+    noise_power = signal_power * rate / snr_linear
+    # noise = np.sqrt(noise_power / 2) * (np.random.randn(len(signal)) + 1j * np.random.randn(len(signal)))
+    noise = np.sqrt(noise_power) * np.random.randn(len(signal))
+
     return signal + noise
 
 def coded(message, trellis, modem, EbNo, SNR_dB):
@@ -296,12 +298,10 @@ def create_received_pattern(message_cnt, snrdB, test, code_type):
                                  str(HD_noise)])
             
             # print(f"Avg BER: {total_errors}/{total_bits}")
-    BER_uncoded = BER_uncoded / (message_cnt)
+    BER_uncoded = BER_uncoded / (message_cnt * 12)
 
     return BER_uncoded, BER_hard
 
-
-def create_received_pattern_undemod(message_cnt, snrdB, test, code_type):
     check_directory()
 
     M = 2                            # M-PSK modulation

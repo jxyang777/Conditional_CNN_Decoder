@@ -99,7 +99,9 @@ def test_model(device, config, dir, code_name, model_idx, SNR_model, test_range,
 
     return BERs
 
-def classify(device, config, dataset, model):
+def classify(device, config, dataset, model, cal_cm):
+    results = []
+    
     codes = torch.tensor(cf.codes).to(device)
     onehot_codes = torch.eye(len(codes)).to(device)
 
@@ -113,8 +115,9 @@ def classify(device, config, dataset, model):
     total_correct = 0
     total_samples = 0
 
-    num_classes = len(codes)
-    confusion_matrix_metric = torchmetrics.ConfusionMatrix(task='multiclass', num_classes=num_classes).to(device)
+    if cal_cm:
+        num_classes = len(codes)
+        confusion_matrix_metric = torchmetrics.ConfusionMatrix(task='multiclass', num_classes=num_classes).to(device)
 
 
     with torch.no_grad():
@@ -134,7 +137,8 @@ def classify(device, config, dataset, model):
             total_samples += len(targets)
             accuracices = total_correct / total_samples
 
-            confusion_matrix_metric.update(predicted_labels, targets.argmax(dim=1))
+            if cal_cm:
+                confusion_matrix_metric.update(predicted_labels, targets.argmax(dim=1))
 
 
             # show progress and loss
@@ -142,13 +146,20 @@ def classify(device, config, dataset, model):
             #     batch = (batch_idx+1) * len(seqs)
             #     percentage = (100. * (batch_idx+1) / len(test_loader))
             #     print(f'[{batch:5d} / {len(test_loader.dataset)}] ({percentage:.0f} %)' + f' Accuracy: {accuracices:.6f}')
+    results.append(accuracices)
 
-    cm = confusion_matrix_metric.compute().cpu().numpy()
-    cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+    if cal_cm:
+        cm = confusion_matrix_metric.compute().cpu().numpy()
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        results.append(cm)
 
-    return accuracices, cm
+    return results
 
 def test_classifier(device, config, dir, code_name, SNR_model, test_range):
+    results = []
+    # If code_name is "code_mix", then calculate confusion matrix
+    cal_cm = (code_name=="code_mix")
+
     input_channels  = config['classifier'].getint('input_channels')
     output_channels = config['classifier'].getint('output_channels')
     kernel_size     = config['classifier'].getint('kernel_size')
@@ -166,17 +177,17 @@ def test_classifier(device, config, dir, code_name, SNR_model, test_range):
         dataset_path     = f"Dataset/Test/{code_name}/receive_{SNR_data}dB.csv"
 
         testset = ds.LoadDataset(dataset_path)
-        acc, cm = classify(device, config, testset, model)
-
-        labels = [(2,1,3), (2,1,5), (2,1,7), (2,1,9)]
-
-        plt.figure(figsize=(5, 4))
-        # sns.heatmap(cm, annot=True, fmt=".4f", cmap="Blues", xticklabels=cf.codes, yticklabels=cf.codes)
-        sns.heatmap(cm, annot=True, fmt=".4f", cmap="Blues", xticklabels=labels, yticklabels=labels)
-        plt.xlabel("Predicted")
-        plt.ylabel("Actual")
-        plt.title(f"Confusion Matrix {SNR_model} dB Model {code_name} {SNR_data} dB")
-        plt.show()
+        classify_results = classify(device, config, testset, model, cal_cm)
+        acc = classify_results[0]
+        if cal_cm:
+            cm = classify_results[1]
+            labels = [(2,1,3), (2,1,5), (2,1,7), (2,1,9)]
+            plt.figure(figsize=(5, 4))
+            sns.heatmap(cm, annot=True, fmt=".4f", cmap="Blues", xticklabels=labels, yticklabels=labels)
+            plt.xlabel("Predicted")
+            plt.ylabel("Actual")
+            plt.title(f"Confusion Matrix {SNR_model} dB Model {code_name} {SNR_data} dB")
+            plt.show()
 
         print(f"SNR: {SNR_data} dB, ACC: {acc}")
         ACCs.append(acc)
