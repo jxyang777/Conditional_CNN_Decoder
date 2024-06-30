@@ -13,7 +13,7 @@ import model as md
 # from config import config
 import config as cf
 
-def test_decoder(device, config, testset, model, cond, rand):
+def test_decoder(device, config, testset, model, cond, rand, gumbel):
     batch_size = config['decoder'].getint('batch_size')
 
     codes = torch.tensor(cf.codes).to(device)
@@ -22,28 +22,39 @@ def test_decoder(device, config, testset, model, cond, rand):
     model.eval()
     BER = 0      # Bit Error Rate
     
+    # Create DataLoader
     test_loader = DataLoader(testset, batch_size=batch_size, shuffle=True, drop_last=True)
 
     with torch.no_grad():
         for batch_idx, data in enumerate(test_loader):
-            seqs      = data[0].unsqueeze(1).to(device)
-            targets    = data[1].to(device)
+            # Load data
+            codeword    = data[0].unsqueeze(1).to(device)
+            targets_msg = data[1].to(device)
 
-            if cond: # Conditional training
+            if cond: 
+                # Conditional training
                 code_info = data[2].to(device)
-                if rand:  # Random create one-hot code
+                if rand:  
+                    # Random create one-hot code
                     random_indices = torch.randint(0, len(codes), len(code_info,)).to(device)
                     info = torch.zeros(len(code_info), len(codes)).to(device)
                     info.scatter_(1, random_indices.unsqueeze(1), 1)
                     code_info = info.float()
                 else:
+                    # Transfer code type to 'onehot' code_info
                     code_info = torch.all(code_info.unsqueeze(1).eq(codes), dim=2).float()
 
-                predictions = model(seqs, code_info).round().to(device)  # Use Cond_CNN_Decoder
-            else:  # Unconditional training
-                predictions = model(seqs).round().to(device)  # Use CNN_Decoder
+                pred_msg = model(codeword, code_info).to(device)  # Use Cond_CNN_Decoder
+            else:  
+                # Unconditional training
+                prediction = model(codeword)
+                if not gumbel:
+                    pred_msg = prediction.to(device)
+                else:
+                    pred_msg = prediction[0].to(device)
+                    pred_class = prediction[1].to(device)
 
-            HD = torch.sum(predictions != targets, dim=1)
+            HD = torch.sum(pred_msg.round() != targets_msg, dim=1)
             BER += HD.sum()
 
             # if ((batch_idx+1) % 100) == 0:
@@ -68,11 +79,13 @@ def test_model(device, config, dir, code_name, model_idx, SNR_model, test_range,
             md.CNN_2L_Decoder(in_ch, out_ch, k_size, config),
             md.CCNN_AL_2L_Decoder(in_ch, out_ch, k_size, config),
             md.CCNN_FM_2L_Decoder(in_ch, out_ch, k_size, config),
-            md.CCNN_joint_Decoder(config),]
+            md.CCNN_joint_Decoder(config),
+            md.CCNN_Joint_Gumbel_Decoder(config),]
     
     model_names = md.model_names
 
-    cond = (model_idx != 0) and (model_idx != 3) and (model_idx != 6)
+    cond = (model_idx != 0) and (model_idx != 3) and (model_idx != 6) and (model_idx != 7)
+    gumbel = (model_idx == 7)
 
     if rand:
         records_path = f"{dir}/records/test/{model_names[model_idx]}_{code_name}_{SNR_model}dB_random.pkl"
@@ -88,7 +101,7 @@ def test_model(device, config, dir, code_name, model_idx, SNR_model, test_range,
     for SNR_data in test_range:
         data_path = f"Dataset/Test/{code_name}/receive_{SNR_data}dB.csv"
         testset = ds.LoadDataset(data_path)
-        BER = test_decoder(device, config, testset, model, cond=cond, rand=rand)
+        BER = test_decoder(device, config, testset, model, cond=cond, rand=rand, gumbel=gumbel)
         BERs.append(BER)
         print(f"SNR: {SNR_data} dB, BER: {BER}")
 
@@ -181,13 +194,7 @@ def test_classifier(device, config, dir, code_name, SNR_model, test_range):
         acc = classify_results[0]
         if cal_cm:
             cm = classify_results[1]
-            labels = [(2,1,3), (2,1,5), (2,1,7), (2,1,9)]
-            plt.figure(figsize=(5, 4))
-            sns.heatmap(cm, annot=True, fmt=".4f", cmap="Blues", xticklabels=labels, yticklabels=labels)
-            plt.xlabel("Predicted")
-            plt.ylabel("Actual")
-            plt.title(f"Confusion Matrix {SNR_model} dB Model {code_name} {SNR_data} dB")
-            plt.show()
+            utils.draw_confus_matrix(cm, SNR_model, code_name, SNR_data)
 
         print(f"SNR: {SNR_data} dB, ACC: {acc}")
         ACCs.append(acc)

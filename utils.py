@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from plottable import Table
 import pandas as pd
 import shutil
+import seaborn as sns
 
 import dataset as ds
 import model as md
@@ -114,6 +115,15 @@ def draw_loss(result_dir, model_idx, SNR_range):
     plt.title(f'Batch Loss ({model_names[model_idx]})')
     plt.legend()
     plt.savefig(f'{result_dir}/figures/loss_{model_names[model_idx]}.png')
+    plt.show()
+
+def draw_confus_matrix(cm, SNR_model, code_name, SNR_data):
+    labels = [(2,1,3), (2,1,5), (2,1,7), (2,1,9)]
+    plt.figure(figsize=(5, 4))
+    sns.heatmap(cm, annot=True, fmt=".4f", cmap="Blues", xticklabels=labels, yticklabels=labels)
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    plt.title(f"Confusion Matrix {SNR_model} dB Model {code_name} {SNR_data} dB")
     plt.show()
 
 def load_BER(result_dir, model_name, code_name, train_range):
@@ -282,22 +292,25 @@ def draw_BER_compare(result_dir, BERs_uncoded, BERs_hard, model_idx_1, model_idx
     plt.savefig(f"{result_dir}/figures/BER_{res_name_1}_vs_{res_name_2}_{test_code}.jpg")
     plt.show()
 
-def draw_BER_compare_multi(result_dir, BERs_uncoded, BERs_hard, model_idx_1, model_idx_t, test_code, train_range, test_range):
-    model_name_1 = md.model_names[model_idx_1]  # CNN
-    model_name_t = md.model_names[model_idx_t]  # CCNN_FM_T
-    model_name_p = md.model_names[model_idx_t]  # CCNN_FM_P
-    model_name_j = md.model_names[6]            # CCNN_FM_J
-    res_name_1 = md.res_model_names[model_idx_1]
-    res_name_t = md.res_model_names[model_idx_t]
+def draw_BER_compare_multi(result_dir, BERs_uncoded, BERs_hard, model_idx_base, model_idx_ind, test_code, train_range, test_range):
+    model_name_b = md.model_names[model_idx_base]    # CNN (baseline)
+    model_name_t = md.model_names[model_idx_ind]     # CCNN_FM_T (true)
+    model_name_p = md.model_names[model_idx_ind]     # CCNN_FM_P (predict)
+    model_name_j = md.model_names[6]                 # CCNN_FM_J (joint)
+    model_name_g = md.model_names[7]                 # CCNN_FM_G (joint+gumbel)
+    res_name_1 = md.res_model_names[model_idx_base]
+    res_name_t = md.res_model_names[model_idx_ind]
     res_name_p = 'CCNN_P'
-    res_name_j = 'CCNN_ J'
+    res_name_j = md.res_model_names[6]
+    res_name_g = md.res_model_names[7]
     colors = ['red', 'orange', 'cyan', 'green', 'blue', 'purple']
     SNR_x = list(test_range)
 
-    BERss_1 = load_BER(result_dir, model_name_1, test_code, train_range)
+    BERss_b = load_BER(result_dir, model_name_b, test_code, train_range)
     BERss_t = load_BER(result_dir, model_name_t, test_code, train_range)
     BERss_p = load_BER_combine(result_dir, model_name_p, test_code, train_range)
     BERss_j = load_BER(result_dir, model_name_j, test_code, train_range)
+    BERss_g = load_BER(result_dir, model_name_g, test_code, train_range)
 
     plt.figure(figsize=(8, 8))
     
@@ -306,27 +319,36 @@ def draw_BER_compare_multi(result_dir, BERs_uncoded, BERs_hard, model_idx_1, mod
     BERs_hard = set_lower_BER(BERs_hard)
     plt.semilogy(SNR_x, BERs_hard, '-', label='Viterbi', color='black')
 
-    for i in range(len(BERss_1)):
-        BERs_1 = BERss_1[i]
+    for i in range(len(BERss_b)):
+        BERs_1 = BERss_b[i]
         BERs_t = BERss_t[i]
         BERs_p = BERss_p[i]
         BERs_j = BERss_j[i]
+        BERs_g = BERss_g[i]
+
         print(f"{res_name_1} {train_range[i]}dB: {BERs_1}")
         print(f"{res_name_t} {train_range[i]}dB: {BERs_t}")
         print(f"{res_name_p} {train_range[i]}dB: {BERs_p}")
         print(f"{res_name_j} {train_range[i]}dB: {BERs_j}")
+        print(f"{res_name_g} {train_range[i]}dB: {BERs_g}")
 
         BERs_1 = set_lower_BER(BERs_1)
         BERs_t = set_lower_BER(BERs_t)
         BERs_p = set_lower_BER(BERs_p)
         BERs_j = set_lower_BER(BERs_j)
+        BERs_g = set_lower_BER(BERs_g)
+
         print(cal_diff(BERs_1, BERs_t))
         print(cal_diff(BERs_1, BERs_p))
         print(cal_diff(BERs_1, BERs_j))
+        print(cal_diff(BERs_1, BERs_g))
+
         plt.semilogy(SNR_x, BERs_1, '-', label=f"{res_name_1} {train_range[i]}dB", color=colors[0], marker='x')
         plt.semilogy(SNR_x, BERs_t, '-', label=f"{res_name_t} {train_range[i]}dB", color=colors[1], marker='o')
         plt.semilogy(SNR_x, BERs_p, '-', label=f"{res_name_p} {train_range[i]}dB", color=colors[4], marker='>')
         plt.semilogy(SNR_x, BERs_j, '-', label=f"{res_name_j} {train_range[i]}dB", color=colors[5], marker='*')
+        plt.semilogy(SNR_x, BERs_g, '-', label=f"{res_name_g} {train_range[i]}dB", color=colors[2], marker='s')
+    
     plt.legend()
     plt.xlabel('SNR (dB)')
     plt.ylabel('BER')

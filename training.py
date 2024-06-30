@@ -9,23 +9,27 @@ import dataset as ds
 import model as md
 from config import config
 
-def train(device, config, dataset, model, model_path, cond, rand):
+def train(device, config, dataset, model, model_path, cond, rand, gumbel):
+    torch.autograd.set_detect_anomaly(True)
+
     codes = torch.tensor(cf.codes).to(device)
     
-    epochs     = config['decoder'].getint('epochs')
-    batch_size = config['decoder'].getint('batch_size')
-    lr         = config['decoder'].getfloat('learning_rate')
-    loss_func  = config['decoder']['loss_func']
+    epochs         = config['decoder'].getint('epochs')
+    batch_size     = config['decoder'].getint('batch_size')
+    lr             = config['decoder'].getfloat('learning_rate')
+    loss_fn_dec  = config['decoder']['loss_func']
 
     model.train()
-    if loss_func == 'BCE':
-        loss_fn   = nn.BCELoss()
-    elif loss_func == 'MSE':
-        loss_fn   = nn.MSELoss()
+    if loss_fn_dec == 'BCE':
+        loss_fn_dec = nn.BCELoss()
+    elif loss_fn_dec == 'MSE':
+        loss_fn_dec = nn.MSELoss()
+    loss_func_clas = nn.CrossEntropyLoss()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-    losses = []
+    losses_dec = []
+    losses_clas = []
     BER_best = 1
     epoch = 0
 
@@ -36,34 +40,52 @@ def train(device, config, dataset, model, model_path, cond, rand):
 
         for batch_idx, data in enumerate(train_loader):
 
-            seqs      = data[0].unsqueeze(1).to(device)
-            targets    = data[1].to(device)
+            codeword        = data[0].unsqueeze(1).to(device)
+            target_msg      = data[1].to(device)
+            target_codetype = data[2].to(device)
+            # transfer code type to 'onehot' code class
+            target_class = torch.all(target_codetype.unsqueeze(1).eq(codes), dim=2).float().to(device)
 
             optimizer.zero_grad()
 
-            if cond: # Conditional training
+            if cond: 
+                # Conditional training
                 code_info = data[2].to(device)
-                if rand:  # random create code_info
+                if rand:  
+                    # random create 'onehot' code_info
                     random_indices = torch.randint(0, len(ds.trellises_info), (len(code_info),)).to(device)
                     info = torch.zeros(len(code_info), len(ds.trellises_info)).to(device)
                     info.scatter_(1, random_indices.unsqueeze(1), 1)
                     code_info = info.float()
                 else:
+                    # Transfer code type to 'onehot' code_info
                     code_info = torch.all(code_info.unsqueeze(1).eq(codes), dim=2).float()
-                predictions = model(seqs, code_info).to(device)
-            else:    # Unconditional training
-                predictions = model(seqs).to(device)
-                
 
+                pred_msg = model(codeword, code_info).to(device)
+            else:    
+                # Unconditional training
+                prediction = model(codeword)
+                if not gumbel:
+                    pred_msg = prediction.to(device)
+                else:
+                    pred_msg   = prediction[0].to(device)
+                    pred_class = prediction[1].to(device)
+                
             # Calculate Hamming Distance
-            HD = torch.sum(predictions.round() != targets, dim=1)
+            HD = torch.sum(pred_msg.round() != target_msg, dim=1)
             BER += HD.sum()
 
-            loss = loss_fn(predictions, targets)
-            # loss = nn.functional.binary_cross_entropy(predictions, targets)
-            losses.append(loss.item())
-            loss.backward()
+            if gumbel:
+                loss_clas = loss_func_clas(pred_class, target_class)
+                losses_clas.append(loss_clas.item())
+                loss_clas.backward()
+                optimizer.step()
+
+            loss_dec = loss_fn_dec(pred_msg, target_msg)
+            losses_dec.append(loss_dec.item())
+            loss_dec.backward()
             optimizer.step()
+
 
             # show progress and loss
             # if ((batch_idx+1) % 20) == 0:
@@ -80,7 +102,7 @@ def train(device, config, dataset, model, model_path, cond, rand):
             utils.save_model(model, model_path)
         
         if epoch==epochs:
-            return losses
+            return losses_dec, losses_clas
 
 
 def train_model(device, config, dir, code_name, SNR, model_idx, rand=False):
@@ -88,37 +110,48 @@ def train_model(device, config, dir, code_name, SNR, model_idx, rand=False):
     out_ch = config['decoder'].getint('output_channels')
     k_size = config['decoder'].getint('kernel_size')
 
+    model_names = md.model_names
     models = [md.CNN_Decoder(in_ch, out_ch, k_size), 
             md.CCNN_AL_Decoder(in_ch, out_ch, k_size), 
             md.CCNN_FM_Decoder(in_ch, out_ch, k_size),
             md.CNN_2L_Decoder(in_ch, out_ch, k_size, config),
             md.CCNN_AL_2L_Decoder(in_ch, out_ch, k_size, config),
             md.CCNN_FM_2L_Decoder(in_ch, out_ch, k_size, config),
-            md.CCNN_joint_Decoder(config),]
+            md.CCNN_joint_Decoder(config),
+            md.CCNN_Joint_Gumbel_Decoder(config)]
     
-    model_names = md.model_names
-    
+    # Select model by model_idx
     model = models[model_idx].to(device)
 
-    cond = (model_idx != 0) and (model_idx != 3) and (model_idx != 6)
+    # Whether to apply conditional training and gumbel softmax
+    cond = (model_idx != 0) and (model_idx != 3) and (model_idx != 6) and (model_idx != 7)
+    gumbel = (model_idx == 7)
 
+    # Set record path
     model_path   = f"{dir}/models/{model_names[model_idx]}_{SNR}dB.pt"
     records_path = f"{dir}/records/train/loss_{model_names[model_idx]}_{SNR}dB.pkl"
-
-
     dataset_path = f"Dataset/Train/{code_name}/receive_{SNR}dB.csv"
 
-    # Load dataset (demodulated data: binary)
+    # Load dataset
     dataset   = ds.LoadDataset(dataset_path)
-    
-    # Load dataset (undemodulated data: complex)
-    # dataset = ds.LoadDataset_Complex(dataset_path)
 
-    losses = train(device, config, dataset, model, model_path, cond=cond, rand=rand)
+    # Train model
+    losses = train(device, config, dataset, model, model_path, cond=cond, rand=rand, gumbel=gumbel)
+    if not gumbel:
+        losses_dec = losses
+    else:
+        losses_dec, losses_clas = losses
 
+    # Save decoder training loss
     with open(records_path, 'wb') as f:
         print(f"Saving records: {records_path}")
-        pickle.dump(losses, f)
+        pickle.dump(losses_dec, f)
+
+    if gumbel:
+        # Save classifier training loss
+        with open(records_path.replace('loss', 'loss_clas'), 'wb') as f:
+            print(f"Saving records: {records_path.replace('loss', 'loss_clas')}")
+            pickle.dump(losses_clas, f)
 
 def classify(device, config, dataset, model, model_path):
     codes = torch.tensor(cf.codes).to(device)
