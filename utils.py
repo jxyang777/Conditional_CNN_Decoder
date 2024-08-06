@@ -6,11 +6,9 @@ import configparser
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
-from plottable import Table
-import pandas as pd
 import shutil
 import seaborn as sns
-
+import pandas as pd
 import dataset as ds
 import model as md
 
