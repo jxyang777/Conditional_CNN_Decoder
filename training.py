@@ -18,6 +18,9 @@ def train(device, config, dataset, model, model_path, cond, rand, gumbel):
     batch_size     = config['decoder'].getint('batch_size')
     lr             = config['decoder'].getfloat('learning_rate')
     loss_fn_dec  = config['decoder']['loss_func']
+    tau = 1
+    tau_min = 0.1
+    tau_decay = 0.99
 
     model.train()
     if loss_fn_dec == 'BCE':
@@ -36,6 +39,8 @@ def train(device, config, dataset, model, model_path, cond, rand, gumbel):
     while True:
         epoch += 1
         BER = 0
+        tau = max(tau_min, tau * tau_decay)
+        print(f"Epoch {epoch} , tau: {tau}")
         train_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
 
         for batch_idx, data in enumerate(train_loader):
@@ -48,8 +53,7 @@ def train(device, config, dataset, model, model_path, cond, rand, gumbel):
 
             optimizer.zero_grad()
 
-            if cond: 
-                # Conditional training
+            if cond: # Independent training
                 code_info = data[2].to(device)
                 if rand:  
                     # random create 'onehot' code_info
@@ -62,24 +66,23 @@ def train(device, config, dataset, model, model_path, cond, rand, gumbel):
                     code_info = torch.all(code_info.unsqueeze(1).eq(codes), dim=2).float()
 
                 pred_msg = model(codeword, code_info).to(device)
-            else:    
-                # Unconditional training
-                prediction = model(codeword)
+            else:    # Joint training
                 if not gumbel:
+                    prediction = model(codeword)
                     pred_msg = prediction.to(device)
                 else:
+                    prediction = model(codeword, tau)
                     pred_msg   = prediction[0].to(device)
-                    pred_class = prediction[1].to(device)
+                    pred_class_soft = prediction[1].to(device)
                 
             # Calculate Hamming Distance
             HD = torch.sum(pred_msg.round() != target_msg, dim=1)
             BER += HD.sum()
 
             if gumbel:
-                loss_clas = loss_func_clas(pred_class, target_class)
+                loss_clas = loss_func_clas(pred_class_soft, target_class)
                 losses_clas.append(loss_clas.item())
-                loss_clas.backward()
-                optimizer.step()
+                loss_clas.backward(retain_graph=True)
 
             loss_dec = loss_fn_dec(pred_msg, target_msg)
             losses_dec.append(loss_dec.item())
@@ -102,7 +105,10 @@ def train(device, config, dataset, model, model_path, cond, rand, gumbel):
             utils.save_model(model, model_path)
         
         if epoch==epochs:
-            return losses_dec, losses_clas
+            if not gumbel:
+                return losses_dec
+            else:
+                return losses_dec, losses_clas
 
 
 def train_model(device, config, dir, code_name, SNR, model_idx, rand=False):
@@ -117,15 +123,28 @@ def train_model(device, config, dir, code_name, SNR, model_idx, rand=False):
             md.CNN_2L_Decoder(in_ch, out_ch, k_size, config),
             md.CCNN_AL_2L_Decoder(in_ch, out_ch, k_size, config),
             md.CCNN_FM_2L_Decoder(in_ch, out_ch, k_size, config),
-            md.CCNN_joint_Decoder(config),
-            md.CCNN_Joint_Gumbel_Decoder(config)]
+            md.CCNN_Joint_Decoder(config),
+            md.CCNN_Joint_Gumbel_Decoder(config),
+            md.CCNN_Joint_2_Decoder(config),
+            md.CCNN_Joint_Gumbel_2_Decoder(config)]
     
     # Select model by model_idx
     model = models[model_idx].to(device)
 
     # Whether to apply conditional training and gumbel softmax
-    cond = (model_idx != 0) and (model_idx != 3) and (model_idx != 6) and (model_idx != 7)
-    gumbel = (model_idx == 7)
+    # cond = (model_idx != 0) and (model_idx != 3) and (model_idx != 6) and (model_idx != 7)
+    # gumbel = (model_idx == 7)
+    match model_idx:
+        case 0 | 3 | 6 | 7 | 8 | 9:
+            cond = False
+        case _:
+            cond = True
+    
+    match model_idx:
+        case 7 | 9:
+            gumbel = True
+        case _:
+            gumbel = False
 
     # Set record path
     model_path   = f"{dir}/models/{model_names[model_idx]}_{SNR}dB.pt"

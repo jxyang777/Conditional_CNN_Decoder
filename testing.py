@@ -13,36 +13,44 @@ import model as md
 # from config import config
 import config as cf
 
-def test_decoder(device, config, testset, model, cond, rand, gumbel):
+def test_decoder(device, config, testset, model, cond, rand, gumbel, cal_cm):
     batch_size = config['decoder'].getint('batch_size')
 
     codes = torch.tensor(cf.codes).to(device)
-    codes = codes.unsqueeze(0).expand(batch_size, -1, -1)  # Repeat codes for each code_info
+    codes_batch = codes.unsqueeze(0).expand(batch_size, -1, -1)  # Repeat codes for each code_info
+    codes_onehot = torch.eye(len(codes)).to(device)
 
     model.eval()
     BER = 0      # Bit Error Rate
+    ACC = 0      # Accuracy
+    total_correct = 0
+    total_samples = 0
     
     # Create DataLoader
     test_loader = DataLoader(testset, batch_size=batch_size, shuffle=True, drop_last=True)
+
+    if cal_cm:
+        num_classes = len(codes)
+        confusion_matrix_metric = torchmetrics.ConfusionMatrix(task='multiclass', num_classes=num_classes).to(device)
 
     with torch.no_grad():
         for batch_idx, data in enumerate(test_loader):
             # Load data
             codeword    = data[0].unsqueeze(1).to(device)
             targets_msg = data[1].to(device)
+            code_info = data[2].to(device)
 
             if cond: 
                 # Conditional training
-                code_info = data[2].to(device)
                 if rand:  
                     # Random create one-hot code
-                    random_indices = torch.randint(0, len(codes), len(code_info,)).to(device)
-                    info = torch.zeros(len(code_info), len(codes)).to(device)
+                    random_indices = torch.randint(0, len(codes_batch), len(code_info,)).to(device)
+                    info = torch.zeros(len(code_info), len(codes_batch)).to(device)
                     info.scatter_(1, random_indices.unsqueeze(1), 1)
                     code_info = info.float()
                 else:
                     # Transfer code type to 'onehot' code_info
-                    code_info = torch.all(code_info.unsqueeze(1).eq(codes), dim=2).float()
+                    code_info = torch.all(code_info.unsqueeze(1).eq(codes_batch), dim=2).float()
 
                 pred_msg = model(codeword, code_info).to(device)  # Use Cond_CNN_Decoder
             else:  
@@ -52,7 +60,20 @@ def test_decoder(device, config, testset, model, cond, rand, gumbel):
                     pred_msg = prediction.to(device)
                 else:
                     pred_msg = prediction[0].to(device)
-                    pred_class = prediction[1].to(device)
+                    if cal_cm:
+                        pred_class_soft = prediction[1].to(device)
+                        pred_class_hard = prediction[2].to(device)
+
+                        _, max_idx = torch.max(pred_class_soft, 1)
+                        pred_class_hard = torch.index_select(codes_onehot, 0, max_idx)
+                        target_class = torch.all(code_info.unsqueeze(1).eq(codes), dim=2).float().to(device)
+
+                        correct_cnt = (pred_class_hard == target_class).all(dim=1).sum().item()
+
+                        total_correct += correct_cnt
+                        total_samples += len(target_class)
+                        ACC = total_correct / total_samples
+                        confusion_matrix_metric.update(max_idx, target_class.argmax(dim=1))
 
             HD = torch.sum(pred_msg.round() != targets_msg, dim=1)
             BER += HD.sum()
@@ -65,6 +86,10 @@ def test_decoder(device, config, testset, model, cond, rand, gumbel):
     BER = BER / (len(test_loader) * batch_size * 12)  # 1 frame has 12 bits
     BER = round(float(BER), 10)
 
+    if (gumbel and cal_cm):
+        CM = confusion_matrix_metric.compute().cpu().numpy()
+        CM = CM.astype('float') / CM.sum(axis=1)[:, np.newaxis]
+        return BER, ACC, CM
 
     return BER
 
@@ -79,44 +104,84 @@ def test_model(device, config, dir, code_name, model_idx, SNR_model, test_range,
             md.CNN_2L_Decoder(in_ch, out_ch, k_size, config),
             md.CCNN_AL_2L_Decoder(in_ch, out_ch, k_size, config),
             md.CCNN_FM_2L_Decoder(in_ch, out_ch, k_size, config),
-            md.CCNN_joint_Decoder(config),
-            md.CCNN_Joint_Gumbel_Decoder(config),]
+            md.CCNN_Joint_Decoder(config),
+            md.CCNN_Joint_Gumbel_Decoder(config),
+            md.CCNN_Joint_2_Decoder(config),
+            md.CCNN_Joint_Gumbel_2_Decoder(config),]
     
     model_names = md.model_names
 
-    cond = (model_idx != 0) and (model_idx != 3) and (model_idx != 6) and (model_idx != 7)
-    gumbel = (model_idx == 7)
+    cal_cm = (code_name=="code_mix")
+
+    match model_idx:
+        case 0 | 3 | 6 | 7 | 8 | 9:
+            cond = False
+        case _:
+            cond = True
+    
+    match model_idx:
+        case 7 | 9:
+            gumbel = True
+        case _:
+            gumbel = False
 
     if rand:
-        records_path = f"{dir}/records/test/{model_names[model_idx]}_{code_name}_{SNR_model}dB_random.pkl"
+        test_BER_path = f"{dir}/records/test/{model_names[model_idx]}_{code_name}_{SNR_model}dB_random.pkl"
         model_path = f"{dir}/models/{model_names[model_idx]}_{SNR_model}dB_random.pt"
     else:
-        records_path = f"{dir}/records/test/{model_names[model_idx]}_{code_name}_{SNR_model}dB.pkl"
+        test_BER_path = f"{dir}/records/test/{model_names[model_idx]}_{code_name}_{SNR_model}dB.pkl"
         model_path = f"{dir}/models/{model_names[model_idx]}_{SNR_model}dB.pt"
+
+    if cal_cm:
+        test_ACC_path = f"{dir}/records/test/ACC_{model_names[model_idx]}_{code_name}_{SNR_model}dB.pkl"
+        # test_CM_path = f"{dir}/records/test/CM_{model_names[model_idx]}_{code_name}_{SNR_model}dB.pkl"
 
     model = utils.load_model(models[model_idx], model_path).to(device)
     model.eval()
 
     BERs = []
+    if cal_cm:
+        ACCs = []
+
     for SNR_data in test_range:
         data_path = f"Dataset/Test/{code_name}/receive_{SNR_data}dB.csv"
+
         testset = ds.LoadDataset(data_path)
-        BER = test_decoder(device, config, testset, model, cond=cond, rand=rand, gumbel=gumbel)
-        BERs.append(BER)
-        print(f"SNR: {SNR_data} dB, BER: {BER}")
+        ret = test_decoder(device, config, testset, model, cond=cond, rand=rand, gumbel=gumbel, cal_cm=cal_cm)
+        
+        if (gumbel and cal_cm):
+            BER = ret[0]
+            BERs.append(BER)
+            print(f"SNR: {SNR_data} dB, BER: {BER}")
 
-    with open(records_path, 'wb') as f:
+            ACC = ret[1]
+            ACCs.append(ACC)
+            print(f"SNR: {SNR_data} dB, ACC: {ACC}")
+
+            CM = ret[2]
+            utils.draw_confus_matrix(CM, SNR_model, code_name, SNR_data)
+        else:
+            BER = ret
+            BERs.append(BER)
+            print(f"SNR: {SNR_data} dB, BER: {BER}")
+
+    with open(test_BER_path, 'wb') as f:
         pickle.dump(BERs, f)
+    print(test_BER_path)
 
-    print(records_path)
+    if cal_cm:
+        with open(test_ACC_path, 'wb') as f:
+            pickle.dump(ACCs, f)
+        print(test_ACC_path)
+
+        return BERs, ACCs
+
 
     return BERs
 
 def classify(device, config, dataset, model, cal_cm):
-    results = []
-    
     codes = torch.tensor(cf.codes).to(device)
-    onehot_codes = torch.eye(len(codes)).to(device)
+    codes_onehot = torch.eye(len(codes)).to(device)
 
     batch_size = config['decoder'].getint('batch_size')
     
@@ -124,7 +189,7 @@ def classify(device, config, dataset, model, cal_cm):
 
     test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
 
-    accuracices = 0
+    ACC = 0
     total_correct = 0
     total_samples = 0
 
@@ -135,41 +200,32 @@ def classify(device, config, dataset, model, cal_cm):
 
     with torch.no_grad():
         for batch_idx, data in enumerate(test_loader):
-            seqs = data[0].float().unsqueeze(1).to(device)
-            code = data[2].to(device)
+            codeword = data[0].float().unsqueeze(1).to(device)
+            code_info = data[2].to(device)
             # transfer code to onehot code
-            targets = torch.all(code.unsqueeze(1).eq(codes), dim=2).float().to(device)
+            target_class = torch.all(code_info.unsqueeze(1).eq(codes), dim=2).float().to(device)
 
-            predictions = model(seqs).to(device)
+            pred_class_soft = model(codeword).to(device)
 
-            _, predicted_labels = torch.max(predictions, 1)
-            predictions = torch.index_select(onehot_codes, 0, predicted_labels)
-            correct = (predictions == targets).all(dim=1).sum().item()
+            _, max_idx = torch.max(pred_class_soft, 1)
+            pred_class_hard = torch.index_select(codes_onehot, 0, max_idx)
+            correct_cnt = (pred_class_hard == target_class).all(dim=1).sum().item()
 
-            total_correct += correct
-            total_samples += len(targets)
-            accuracices = total_correct / total_samples
+            total_correct += correct_cnt
+            total_samples += len(target_class)
+            ACC = total_correct / total_samples
 
             if cal_cm:
-                confusion_matrix_metric.update(predicted_labels, targets.argmax(dim=1))
-
-
-            # show progress and loss
-            # if ((batch_idx+1) % 10) == 0:
-            #     batch = (batch_idx+1) * len(seqs)
-            #     percentage = (100. * (batch_idx+1) / len(test_loader))
-            #     print(f'[{batch:5d} / {len(test_loader.dataset)}] ({percentage:.0f} %)' + f' Accuracy: {accuracices:.6f}')
-    results.append(accuracices)
+                confusion_matrix_metric.update(max_idx, target_class.argmax(dim=1))
 
     if cal_cm:
         cm = confusion_matrix_metric.compute().cpu().numpy()
         cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-        results.append(cm)
+        return ACC, cm
 
-    return results
+    return ACC
 
 def test_classifier(device, config, dir, code_name, SNR_model, test_range):
-    results = []
     # If code_name is "code_mix", then calculate confusion matrix
     cal_cm = (code_name=="code_mix")
 
@@ -191,13 +247,16 @@ def test_classifier(device, config, dir, code_name, SNR_model, test_range):
 
         testset = ds.LoadDataset(dataset_path)
         classify_results = classify(device, config, testset, model, cal_cm)
-        acc = classify_results[0]
+        
+        if not cal_cm:
+            ACC = classify_results
         if cal_cm:
+            ACC = classify_results[0]
             cm = classify_results[1]
             utils.draw_confus_matrix(cm, SNR_model, code_name, SNR_data)
 
-        print(f"SNR: {SNR_data} dB, ACC: {acc}")
-        ACCs.append(acc)
+        print(f"SNR: {SNR_data} dB, ACC: {ACC}")
+        ACCs.append(ACC)
 
     with open(records_path, 'wb') as f:
         pickle.dump(ACCs, f)
@@ -228,9 +287,6 @@ def classify_and_decode(device, config, testset, decoder_model, classifier_model
             tragets_classifier = data[2].to(device)
             tragets_classifier = torch.all(tragets_classifier.unsqueeze(1).eq(codes), dim=2).float().to(device)
 
-            # code_info = data[2].to(device)
-            # code_info = torch.all(code_info.unsqueeze(1).eq(codes), dim=2).float()
-
             # First: classify
             pred_code = classifier_model(seqs).to(device)
             _, pred_label = torch.max(pred_code, 1)
@@ -245,11 +301,6 @@ def classify_and_decode(device, config, testset, decoder_model, classifier_model
 
             HD = torch.sum(pred_msg != targets_decoder, dim=1)
             BER += HD.sum()
-
-            # if ((batch_idx+1) % 10) == 0:
-            #     batch = (batch_idx+1) * len(seqs)
-            #     percentage = (100. * (batch_idx+1) / len(test_loader))
-            #     print(f'[{batch:5d} / {len(test_loader.dataset)}] ({percentage:.0f} %)')
                 
     BER = BER / (len(test_loader) * batch_size * 12)  # 1 block has 12 bits
     BER = round(float(BER), 10)
@@ -271,7 +322,7 @@ def test_classifier_decoder(device, config, dir, code_name, dec_model_idx, SNR_m
             md.CNN_2L_Decoder(in_ch_dec, out_ch_dec, k_size_dec, config),
             md.CCNN_AL_2L_Decoder(in_ch_dec, out_ch_dec, k_size_dec, config),
             md.CCNN_FM_2L_Decoder(in_ch_dec, out_ch_dec, k_size_dec, config),
-            md.CCNN_joint_Decoder(config),]
+            md.CCNN_Joint_Decoder(config),]
     
     model_names = md.model_names
 

@@ -11,7 +11,9 @@ model_names = ['CNN',       # 0
               'CCNN_AL_2L', # 4
               'CCNN_FM_2L', # 5
               'CCNN_Joint',  # 6
-              'CCNN_Joint_Gumbel' # 7
+              'CCNN_Joint_Gumbel',   # 7  Using gumbel soft output as the conditional input
+              'CCNN_Joint_2',        # 8  Using the same one conv for both Decoder and Classifier
+              'CCNN_Joint_Gumbel_2', # 9  Using gumbel soft output as the conditional input
               ]
 
 res_model_names = ['CNN',
@@ -20,8 +22,10 @@ res_model_names = ['CNN',
                     'CNN',
                     'CCNN',
                     'CCNN_T',
-                    'CCNN_J',
-                    'CCNN_G'
+                    'CCNN_J1',
+                    'CCNN_G1',
+                    'CCNN_J2',
+                    'CCNN_G2',
                     ]
 
 torch.autograd.set_detect_anomaly(True)
@@ -230,18 +234,18 @@ class CNN_Classifier(nn.Module):
         
         return x
     
-class CCNN_joint_Decoder(nn.Module):
+class CCNN_Joint_Decoder(nn.Module):
     def __init__(self, config):
         super().__init__()
         # Decoder Part
-        self.dec_in_ch        = config['decoder'].getint('input_channels')
-        self.dec_out_ch       = config['decoder'].getint('output_channels')
-        self.dec_kernel_size  = config['decoder'].getint('kernel_size')
-        self.dec_layer_1      = config['decoder'].getint('layer_1')
-        self.dec_layer_2      = config['decoder'].getint('layer_2')
-        self.dec_dropout      = config['decoder'].getfloat('dropout')
-        self.dec_in_size      = config['decoder'].getint('input_size')
-        self.dec_out_size     = config['decoder'].getint('output_size')
+        self.dec_in_ch        = config['joint_decoder'].getint('input_channels')
+        self.dec_out_ch       = config['joint_decoder'].getint('output_channels')
+        self.dec_kernel_size  = config['joint_decoder'].getint('kernel_size')
+        self.dec_layer_1      = config['joint_decoder'].getint('layer_1')
+        self.dec_layer_2      = config['joint_decoder'].getint('layer_2')
+        self.dec_dropout      = config['joint_decoder'].getfloat('dropout')
+        self.dec_in_size      = config['joint_decoder'].getint('input_size')
+        self.dec_out_size     = config['joint_decoder'].getint('output_size')
         self.dec_feature_size = self.dec_in_size - self.dec_kernel_size + 1
 
         self.dec_conv    = nn.Conv1d(self.dec_in_ch, self.dec_out_ch, self.dec_kernel_size)
@@ -253,14 +257,14 @@ class CCNN_joint_Decoder(nn.Module):
         self.dec_dropout = nn.Dropout(self.dec_dropout)
 
         # Condition Part
-        self.cond_in_ch        = config['classifier'].getint('input_channels')
-        self.cond_out_ch       = config['classifier'].getint('output_channels')
-        self.cond_kernel_size  = config['classifier'].getint('kernel_size')
-        self.cond_layer_1      = config['classifier'].getint('layer_1')
-        self.cond_layer_2      = config['classifier'].getint('layer_2')
-        self.cond_dropout      = config['classifier'].getfloat('dropout')
-        self.cond_in_size      = config['classifier'].getint('input_size')
-        self.cond_out_size     = config['classifier'].getint('output_size')
+        self.cond_in_ch        = config['joint_classifier'].getint('input_channels')
+        self.cond_out_ch       = config['joint_classifier'].getint('output_channels')
+        self.cond_kernel_size  = config['joint_classifier'].getint('kernel_size')
+        self.cond_layer_1      = config['joint_classifier'].getint('layer_1')
+        self.cond_layer_2      = config['joint_classifier'].getint('layer_2')
+        self.cond_dropout      = config['joint_classifier'].getfloat('dropout')
+        self.cond_in_size      = config['joint_classifier'].getint('input_size')
+        self.cond_out_size     = config['joint_classifier'].getint('output_size')
         self.cond_feature_size = self.cond_in_size - self.cond_kernel_size + 1
 
 
@@ -301,20 +305,20 @@ class CCNN_joint_Decoder(nn.Module):
         x_2 = self.dec_fc3(x_2)
         x_2 = self.dec_sigmoid(x_2)
         return x_2
-
-
-class CCNN_Joint_Gumbel_Decoder(nn.Module):
+    
+# Decoder and Classifier using the same one conv (parameter based on decoder in config.ini)
+class CCNN_Joint_2_Decoder(nn.Module):
     def __init__(self, config):
         super().__init__()
         # Decoder Part
-        self.dec_in_ch        = config['decoder'].getint('input_channels')     # Input channels
-        self.dec_out_ch       = config['decoder'].getint('output_channels')    # Output channels
-        self.dec_kernel_size  = config['decoder'].getint('kernel_size')        # Kernel size
-        self.dec_layer_1      = config['decoder'].getint('layer_1')            # Layer 1 size
-        self.dec_layer_2      = config['decoder'].getint('layer_2')            # Layer 2 size
-        self.dec_dropout      = config['decoder'].getfloat('dropout')          # Dropout rate
-        self.dec_in_size      = config['decoder'].getint('input_size')         # Input size
-        self.dec_out_size     = config['decoder'].getint('output_size')        # Output size
+        self.dec_in_ch        = config['joint_decoder'].getint('input_channels')
+        self.dec_out_ch       = config['joint_decoder'].getint('output_channels')
+        self.dec_kernel_size  = config['joint_decoder'].getint('kernel_size')
+        self.dec_layer_1      = config['joint_decoder'].getint('layer_1')
+        self.dec_layer_2      = config['joint_decoder'].getint('layer_2')
+        self.dec_dropout      = config['joint_decoder'].getfloat('dropout')
+        self.dec_in_size      = config['joint_decoder'].getint('input_size')
+        self.dec_out_size     = config['joint_decoder'].getint('output_size')
         self.dec_feature_size = self.dec_in_size - self.dec_kernel_size + 1
 
         self.dec_conv    = nn.Conv1d(self.dec_in_ch, self.dec_out_ch, self.dec_kernel_size)
@@ -326,14 +330,86 @@ class CCNN_Joint_Gumbel_Decoder(nn.Module):
         self.dec_dropout = nn.Dropout(self.dec_dropout)
 
         # Condition Part
-        self.cond_in_ch        = config['classifier'].getint('input_channels')    # Input channels
-        self.cond_out_ch       = config['classifier'].getint('output_channels')   # Output channels
-        self.cond_kernel_size  = config['classifier'].getint('kernel_size')       # Kernel size
-        self.cond_layer_1      = config['classifier'].getint('layer_1')           # Layer 1 size
-        self.cond_layer_2      = config['classifier'].getint('layer_2')           # Layer 2 size
-        self.cond_dropout      = config['classifier'].getfloat('dropout')         # Dropout rate
-        self.cond_in_size      = config['classifier'].getint('input_size')        # Input size
-        self.cond_out_size     = config['classifier'].getint('output_size')       # Output size
+        self.cond_in_ch        = config['joint_classifier'].getint('input_channels')
+        self.cond_out_ch       = config['joint_classifier'].getint('output_channels')
+        self.cond_kernel_size  = config['joint_classifier'].getint('kernel_size')
+        self.cond_layer_1      = config['joint_classifier'].getint('layer_1')
+        self.cond_layer_2      = config['joint_classifier'].getint('layer_2')
+        self.cond_dropout      = config['joint_classifier'].getfloat('dropout')
+        self.cond_in_size      = config['joint_classifier'].getint('input_size')
+        self.cond_out_size     = config['joint_classifier'].getint('output_size')
+        self.cond_feature_size = self.cond_in_size - self.cond_kernel_size + 1
+
+        self.cond_flatten = nn.Flatten()
+        self.cond_fc1 = nn.Linear(self.cond_out_ch*self.cond_feature_size, self.cond_layer_1)
+        self.cond_fc2 = nn.Linear(self.cond_layer_1, self.cond_layer_2)
+        self.cond_fc3 = nn.Linear(self.cond_layer_2, self.cond_out_size)
+        self.cond_sigmoid = nn.Sigmoid()
+        self.cond_dropout = nn.Dropout(self.cond_dropout)
+
+    def forward(self, x):
+        #The same one CNN for both Decoder and Classifier
+        x = self.dec_conv(x)
+        x = F.relu(x)
+
+        # Condition Part
+        x_1 = self.cond_flatten(x)
+        x_1 = self.cond_fc1(x_1)
+        x_1 = self.cond_dropout(x_1)
+        x_1 = F.relu(x_1)
+        x_1 = self.cond_fc2(x_1)
+        x_1 = self.cond_dropout(x_1)
+        x_1 = F.relu(x_1)
+        x_1 = self.cond_fc3(x_1)
+
+        # Expand the conditional feature to match the size of the conv output channel, [4] -> [150, 4]
+        conditional_feature = x_1.unsqueeze(1).expand(-1, self.dec_out_ch, -1)
+
+        # Decoder Part
+        x_2 = torch.cat((x, conditional_feature), dim=2)
+        x_2 = self.dec_flatten(x_2)
+        x_2 = self.dec_fc1(x_2)
+        x_2 = self.dec_dropout(x_2)
+        x_2 = F.relu(x_2)
+        x_2 = self.dec_fc2(x_2)
+        x_2 = self.dec_dropout(x_2)
+        x_2 = F.relu(x_2)
+        x_2 = self.dec_fc3(x_2)
+        x_2 = self.dec_sigmoid(x_2)
+        return x_2
+
+# Using gumbel hard output as the conditional input
+class CCNN_Joint_Gumbel_Decoder(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        # Decoder Part
+        self.dec_in_ch        = config['joint_decoder'].getint('input_channels')     # Input channels
+        self.dec_out_ch       = config['joint_decoder'].getint('output_channels')    # Output channels
+        self.dec_kernel_size  = config['joint_decoder'].getint('kernel_size')        # Kernel size
+        self.dec_layer_1      = config['joint_decoder'].getint('layer_1')            # Layer 1 size
+        self.dec_layer_2      = config['joint_decoder'].getint('layer_2')            # Layer 2 size
+        self.dec_dropout      = config['joint_decoder'].getfloat('dropout')          # Dropout rate
+        self.dec_in_size      = config['joint_decoder'].getint('input_size')         # Input size
+        self.dec_out_size     = config['joint_decoder'].getint('output_size')        # Output size
+        self.dec_feature_size = self.dec_in_size - self.dec_kernel_size + 1
+
+        self.dec_conv    = nn.Conv1d(self.dec_in_ch, self.dec_out_ch, self.dec_kernel_size)
+        self.dec_flatten = nn.Flatten()
+        self.dec_fc1     = nn.Linear(self.dec_out_ch*(self.dec_feature_size + len(config['codes'])), self.dec_layer_1)
+        self.dec_fc2     = nn.Linear(self.dec_layer_1, self.dec_layer_2)
+        self.dec_fc3     = nn.Linear(self.dec_layer_2, self.dec_out_size)
+        self.dec_sigmoid = nn.Sigmoid()
+        self.dec_dropout = nn.Dropout(self.dec_dropout)
+
+        # Condition Part
+        self.cond_in_ch        = config['joint_classifier'].getint('input_channels')    # Input channels
+        self.cond_out_ch       = config['joint_classifier'].getint('output_channels')   # Output channels
+        self.cond_kernel_size  = config['joint_classifier'].getint('kernel_size')       # Kernel size
+        self.cond_layer_1      = config['joint_classifier'].getint('layer_1')           # Layer 1 size
+        self.cond_layer_2      = config['joint_classifier'].getint('layer_2')           # Layer 2 size
+        self.cond_dropout      = config['joint_classifier'].getfloat('dropout')         # Dropout rate
+        self.cond_in_size      = config['joint_classifier'].getint('input_size')        # Input size
+        self.cond_out_size     = config['joint_classifier'].getint('output_size')       # Output size
         self.cond_feature_size = self.cond_in_size - self.cond_kernel_size + 1
 
 
@@ -345,7 +421,7 @@ class CCNN_Joint_Gumbel_Decoder(nn.Module):
         self.cond_sigmoid = nn.Sigmoid()
         self.cond_dropout = nn.Dropout(self.cond_dropout)
 
-    def forward(self, x):
+    def forward(self, x, tau):
         # Condition Part
         x_1 = self.cond_conv(x)
         x_1 = F.relu(x_1)
@@ -357,7 +433,7 @@ class CCNN_Joint_Gumbel_Decoder(nn.Module):
         x_1 = self.cond_dropout(x_1)
         x_1 = F.relu(x_1)
         logits = self.cond_fc3(x_1)
-        gumbel_soft = F.gumbel_softmax(logits, tau=1, hard=False)  # hard=True to calculate cross entropy loss
+        gumbel_soft = F.gumbel_softmax(logits, tau, hard=False)  # hard=True to calculate cross entropy loss
 
         dim = -1
         index = gumbel_soft.max(dim, keepdim=True)[1]
@@ -379,4 +455,84 @@ class CCNN_Joint_Gumbel_Decoder(nn.Module):
         x_2 = self.dec_fc3(x_2)
         x_2 = self.dec_sigmoid(x_2)
 
-        return x_2, gumbel_soft
+        return x_2, gumbel_soft, gumbel_hard
+    
+# Using gumbel soft output as the conditional input
+class CCNN_Joint_Gumbel_2_Decoder(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        # Decoder Part
+        self.dec_in_ch        = config['joint_decoder'].getint('input_channels')     # Input channels
+        self.dec_out_ch       = config['joint_decoder'].getint('output_channels')    # Output channels
+        self.dec_kernel_size  = config['joint_decoder'].getint('kernel_size')        # Kernel size
+        self.dec_layer_1      = config['joint_decoder'].getint('layer_1')            # Layer 1 size
+        self.dec_layer_2      = config['joint_decoder'].getint('layer_2')            # Layer 2 size
+        self.dec_dropout      = config['joint_decoder'].getfloat('dropout')          # Dropout rate
+        self.dec_in_size      = config['joint_decoder'].getint('input_size')         # Input size
+        self.dec_out_size     = config['joint_decoder'].getint('output_size')        # Output size
+        self.dec_feature_size = self.dec_in_size - self.dec_kernel_size + 1
+
+        self.dec_conv    = nn.Conv1d(self.dec_in_ch, self.dec_out_ch, self.dec_kernel_size)
+        self.dec_flatten = nn.Flatten()
+        self.dec_fc1     = nn.Linear(self.dec_out_ch*(self.dec_feature_size + len(config['codes'])), self.dec_layer_1)
+        self.dec_fc2     = nn.Linear(self.dec_layer_1, self.dec_layer_2)
+        self.dec_fc3     = nn.Linear(self.dec_layer_2, self.dec_out_size)
+        self.dec_sigmoid = nn.Sigmoid()
+        self.dec_dropout = nn.Dropout(self.dec_dropout)
+
+        # Condition Part
+        self.cond_in_ch        = config['joint_classifier'].getint('input_channels')    # Input channels
+        self.cond_out_ch       = config['joint_classifier'].getint('output_channels')   # Output channels
+        self.cond_kernel_size  = config['joint_classifier'].getint('kernel_size')       # Kernel size
+        self.cond_layer_1      = config['joint_classifier'].getint('layer_1')           # Layer 1 size
+        self.cond_layer_2      = config['joint_classifier'].getint('layer_2')           # Layer 2 size
+        self.cond_dropout      = config['joint_classifier'].getfloat('dropout')         # Dropout rate
+        self.cond_in_size      = config['joint_classifier'].getint('input_size')        # Input size
+        self.cond_out_size     = config['joint_classifier'].getint('output_size')       # Output size
+        self.cond_feature_size = self.cond_in_size - self.cond_kernel_size + 1
+
+
+        self.cond_conv = nn.Conv1d(self.cond_in_ch, self.cond_out_ch, self.cond_kernel_size)
+        self.cond_flatten = nn.Flatten()
+        self.cond_fc1 = nn.Linear(self.cond_out_ch*self.cond_feature_size, self.cond_layer_1)
+        self.cond_fc2 = nn.Linear(self.cond_layer_1, self.cond_layer_2)
+        self.cond_fc3 = nn.Linear(self.cond_layer_2, self.cond_out_size)
+        self.cond_sigmoid = nn.Sigmoid()
+        self.cond_dropout = nn.Dropout(self.cond_dropout)
+
+    def forward(self, x, tau):
+        # Condition Part
+        x_1 = self.cond_conv(x)
+        x_1 = F.relu(x_1)
+        x_1 = self.cond_flatten(x_1)
+        x_1 = self.cond_fc1(x_1)
+        x_1 = self.cond_dropout(x_1)
+        x_1 = F.relu(x_1)
+        x_1 = self.cond_fc2(x_1)
+        x_1 = self.cond_dropout(x_1)
+        x_1 = F.relu(x_1)
+        logits = self.cond_fc3(x_1)
+        gumbel_soft = F.gumbel_softmax(logits, tau, hard=False)  # hard=True to calculate cross entropy loss
+
+        dim = -1
+        index = gumbel_soft.max(dim, keepdim=True)[1]
+        gumbel_soft_expand = gumbel_soft.unsqueeze(1).expand(-1, self.dec_out_ch, -1)
+
+        gumbel_hard = torch.zeros_like(logits, memory_format=torch.legacy_contiguous_format).scatter(dim, index, 1.0)
+        gumbel_hard = gumbel_hard.unsqueeze(1).expand(-1, self.dec_out_ch, -1)
+
+        # Decoder Part
+        x_2 = self.dec_conv(x)
+        x_2= F.relu(x_2)
+        x_2 = torch.cat((x_2, gumbel_soft_expand), dim=2)
+        x_2 = self.dec_flatten(x_2)
+        x_2 = self.dec_fc1(x_2)
+        x_2 = self.dec_dropout(x_2)
+        x_2 = F.relu(x_2)
+        x_2 = self.dec_fc2(x_2)
+        x_2 = self.dec_dropout(x_2)
+        x_2 = F.relu(x_2)
+        x_2 = self.dec_fc3(x_2)
+        x_2 = self.dec_sigmoid(x_2)
+
+        return x_2, gumbel_soft, gumbel_hard
