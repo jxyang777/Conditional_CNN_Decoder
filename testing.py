@@ -55,10 +55,11 @@ def test_decoder(device, config, testset, model, cond, rand, gumbel, cal_cm):
                 pred_msg = model(codeword, code_info).to(device)  # Use Cond_CNN_Decoder
             else:  
                 # Unconditional training
-                prediction = model(codeword)
                 if not gumbel:
+                    prediction = model(codeword)
                     pred_msg = prediction.to(device)
                 else:
+                    prediction = model(codeword, tau=0.1)
                     pred_msg = prediction[0].to(device)
                     if cal_cm:
                         pred_class_soft = prediction[1].to(device)
