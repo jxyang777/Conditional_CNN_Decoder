@@ -90,6 +90,11 @@ def create_rec_dir(dir_name):
 
     return dir, config
 
+def get_rec_dir(dir_name):
+    results_path = os.path.join(os.getcwd(), "results")
+    dir = os.path.join(results_path, dir_name)
+    return dir
+
 def draw_single_decoder_loss(result_dir, model_idx, SNR_range):
     model_names = md.model_names
     losses = []
