@@ -325,6 +325,7 @@ def cal_diff(BERs_1, BERs_2):
 
     return [f"{round(d*100, 2)}%" for d in diff]
 
+# Draw BER of joint trained model
 def draw_BER_single(result_dir, model_idx, test_code, train_range, test_range, train_code):
     BERs_uncoded = load_BER_uncoded(train_code)
     BERs_hard = load_BER_hard(train_code)
@@ -333,6 +334,7 @@ def draw_BER_single(result_dir, model_idx, test_code, train_range, test_range, t
     res_name = md.res_model_names[model_idx]
 
     colors = ['red', 'orange', 'cyan', 'green', 'blue', 'purple']
+    marks  = ['o', '>', '*', 'd', 's', '^']
 
     SNR_x = list(test_range)
 
@@ -348,10 +350,7 @@ def draw_BER_single(result_dir, model_idx, test_code, train_range, test_range, t
         BERs = BERss[i]
         print(f"{res_name} {train_range[i]}dB: {BERs}")
         BERs = set_lower_BER(BERs)
-        if i==0:
-            plt.semilogy(SNR_x, BERs, '-', label=f"{res_name} {train_range[i]}dB", color=colors[i], marker='o')
-        else:
-            plt.semilogy(SNR_x, BERs, '-', label=f"{res_name} {train_range[i]}dB", color=colors[i])
+        plt.semilogy(SNR_x, BERs, '-', label=f"{res_name} {train_range[i]}dB", color=colors[i], marker=marks[i])
     
     plt.legend(loc='best', bbox_to_anchor=(1, 1))
     plt.tight_layout()
@@ -366,6 +365,7 @@ def draw_BER_single(result_dir, model_idx, test_code, train_range, test_range, t
         plt.savefig(f"{result_dir}/figures/BER_{res_name}_SNR{train_range[0]}~{train_range[-1]}.jpg")
     plt.show()
 
+# Draw BER of independent trained model
 def draw_BER_single_combine(result_dir, test_code, train_range, test_range, train_code):
     BERs_uncoded = load_BER_uncoded(train_code)
     BERs_hard = load_BER_hard(train_code)
@@ -375,6 +375,7 @@ def draw_BER_single_combine(result_dir, test_code, train_range, test_range, trai
     res_name = 'CCNN_P'
 
     colors = ['red', 'orange', 'cyan', 'green', 'blue', 'purple']
+    marks  = ['o', '>', '*', 'd', 's', '^']
 
     SNR_x = list(test_range)
 
@@ -390,11 +391,8 @@ def draw_BER_single_combine(result_dir, test_code, train_range, test_range, trai
         BERs = BERss[i]
         print(f"{res_name} {train_range[i]}dB: {BERs}")
         BERs = set_lower_BER(BERs)
-        if i==0:
-            plt.semilogy(SNR_x, BERs, '-', label=f"{res_name} {train_range[i]}dB", color=colors[i], marker='o')
-        else:
-            plt.semilogy(SNR_x, BERs, '-', label=f"{res_name} {train_range[i]}dB", color=colors[i])
-    
+        plt.semilogy(SNR_x, BERs, '-', label=f"{res_name} {train_range[i]}dB", color=colors[i], marker=marks[i])
+
     plt.legend(loc='best', bbox_to_anchor=(1, 1))
     plt.tight_layout()
     plt.xlabel('SNR (dB)')
@@ -451,6 +449,7 @@ def draw_BER_compare(result_dir, BERs_uncoded, BERs_hard, model_idx_1, model_idx
     plt.savefig(f"{result_dir}/figures/BER_{res_name_1}_vs_{res_name_2}_{test_code}.jpg")
     plt.show()
 
+# Draw BER of all model in one figure
 def draw_BER_compare_multi(result_dir, model_idx_base, model_idx_independent, test_code, train_range, test_range, train_code):
     BERs_uncoded = load_BER_uncoded(train_code)
     BERs_hard = load_BER_hard(train_code)

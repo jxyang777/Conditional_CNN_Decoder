@@ -28,37 +28,31 @@ def BER_calc(a, b):
 def simulate(args):
     snrdB, N, N_c, trellis, modem, rate = args
     BER_hard = np.zeros(N_c)
-    BER_uncoded = np.zeros(N_c)
 
     for cntr in range(N_c):
         message_bits = np.random.randint(0, 2, N)
 
-        # encoding
+        # Convolutional Code Encoding
         coded_bits = cc.conv_encode(message_bits, trellis, 'cond')
         
-        # modulation
+        # Modulation
         modulated = modem.modulate(coded_bits)
-        modulated_uncoded = modem.modulate(message_bits)
 
-        # AWGN channel
+        # Add channel noise
         noised_coded   = awgn(modulated, snrdB)
-        noised_uncoded = awgn(modulated_uncoded, snrdB)
 
-        # demodulation
+        # Demodulation
         demodulated_hard = modem.demodulate(noised_coded, demod_type='hard')
-        demodulated_uncoded = modem.demodulate(noised_uncoded, demod_type='hard')
 
-        # decoding
+        # Viterbi decoding
         decoded_hard = cc.viterbi_decode(demodulated_hard, trellis, decoding_type='hard')
 
-        # bit-error ratio
+        # Calculate bit-error ratio
         NumErr, BER_hard[cntr] = BER_calc(message_bits, decoded_hard[:message_bits.size])
-        NumErr, BER_uncoded[cntr] = BER_calc(message_bits, demodulated_uncoded[:message_bits.size])
 
     # averaged bit-error ratio
     mean_BER_hard = BER_hard.mean()
-    mean_BER_uncoded = BER_uncoded.mean()
-    return (mean_BER_hard, mean_BER_uncoded)
+    return mean_BER_hard
 
 
 N = 12                         # number of bits per block
@@ -70,7 +64,7 @@ modem = modulation.PSKModem(M) # M-PSK modem initialization
 test_range = range(1, 11)
 N_c = 1000 # number of trials
 
-# 使用 multiprocessing.Pool 并行处理
+# 使用 multiprocessing.Pool 並行處理
 pool = Pool()
 results = []
 start_time = time.time()
@@ -87,16 +81,14 @@ BERs_hard = {i: [] for i in range(4)}
 BERs_uncoded = {i: [] for i in range(4)}
 
 for i, result in enumerate(results):
-    mean_BER_hard, mean_BER_uncoded = result.get()
+    mean_BER_hard = result.get()
     trellis_index = i // len(test_range)
     BERs_hard[trellis_index].append(mean_BER_hard)
-    BERs_uncoded[trellis_index].append(mean_BER_uncoded)
 
 end_time = time.time()
 
 for i in range(4):
     print(f"Trellis {i+1} Hard decision:\n{BERs_hard[i]}\n")
-    print(f"Trellis {i+1} Uncoded message:\n{BERs_uncoded[i]}\n")
     rec_path = f"Dataset/Test/code_{i+1}/hard_BER.pkl"
     with open(rec_path, 'wb') as f:
         pickle.dump(BERs_hard[i], f)
@@ -105,10 +97,7 @@ BERs_hard_list = np.array(list(BERs_hard.values()))
 BER_hard_mix = np.mean(BERs_hard_list, axis=0)
 print(f"Hard Mix BER:\n{BER_hard_mix}\n")
 
-BERs_uncoded_list = np.array(list(BERs_uncoded.values()))
-BER_uncoded_mix = np.mean(BERs_uncoded_list, axis=0)
-print(f"Uncoded Mix BER:\n{BER_uncoded_mix}\n")
-
+# Save BER
 rec_path = f"Dataset/Test/code_mix/hard_BER.pkl"
 with open(rec_path, 'wb') as f:
     pickle.dump(BER_hard_mix, f)
