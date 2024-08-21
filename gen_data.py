@@ -3,6 +3,7 @@ import pickle
 import time
 import dataset as ds
 import multiprocessing as mp
+import argparse
 
 
 
@@ -18,7 +19,7 @@ def generate_data(test, message_cnt, code_type):
         BER_uncoded, BER_hard = ds.create_received_pattern(message_cnt, SNR_data, test=test, code_type=code_type)
         BERs_uncoded.append(BER_uncoded)
         BERs_hard.append(BER_hard)
-    print(BERs_uncoded, BERs_hard)
+    print(BERs_uncoded)
 
 
     if code_type == 5: code_type = "mix"
@@ -35,9 +36,6 @@ def generate_data(test, message_cnt, code_type):
         print(f"Saving Uncoded BER: {uncoded_BER_path}")
         pickle.dump(BERs_uncoded, f)
     
-    # with open(hard_BER_path, 'wb') as f:
-    #     print(f"Saving Hard BER: {hard_BER_path}")
-    #     pickle.dump(BERs_hard, f)
 
 def gen_data(test, message_cnt):
     if test: code_types = [1, 2, 3, 4, 5]
@@ -48,6 +46,17 @@ def gen_data(test, message_cnt):
 
 # code_type: 1~4 correspond to trellis 1, 2, 3, 4
 # code_type: 5   corresponds to all trellises mixed
+
+parser = argparse.ArgumentParser(description='Generate dataset')
+parser.add_argument("-t", "--test", action="store_true", help='Generate test dataset')
+parser.add_argument("-m", "--message_cnt", type=int, default=100000, help='Number of messages to generate')
+args = parser.parse_args()
+
+test = args.test
+message_cnt = args.message_cnt
+
+print(test, message_cnt)
+print(f"Generating {'test' if test else 'train'} dataset with {message_cnt} messages for each SNR value")
 
 start_time = time.time()
 # Generate training data
@@ -65,7 +74,6 @@ start_time = time.time()
 # generate_data(test=True, message_cnt=100000, code_type=5)
 
 # generate data using multiprocessing
-# gen_data(test=False, message_cnt=100000)
-gen_data(test=True, message_cnt=100000)
+gen_data(test, message_cnt)
 end_time = time.time()
 print(f"Time: {round((end_time - start_time)/60)} min {round((end_time - start_time)%60, 2)} sec")
