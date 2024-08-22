@@ -13,12 +13,6 @@ trellis_219 = cc.Trellis(memory=np.array(8, ndmin=1), g_matrix=np.array((0o753, 
 
 trellises = [trellis_213, trellis_215, trellis_217, trellis_219]
 
-def awgn(signal, snr_dB, rate=1):
-    snr_linear = 10**(snr_dB / 10.0)
-    signal_power = np.mean(np.abs(signal)**2)
-    noise_power = signal_power * rate /snr_linear
-    noise = np.sqrt(noise_power) * np.random.randn(len(signal))
-    return signal + noise
 
 def BER_calc(a, b):
     num_ber = np.sum(a != b)
@@ -39,7 +33,9 @@ def simulate(args):
         modulated = modem.modulate(coded_bits)
 
         # Add channel noise
-        noised_coded   = awgn(modulated, snrdB)
+        signal_power = np.mean(np.abs(modulated)**2)
+        noise = np.sqrt(signal_power / (10**(snrdB / 10.0))) * (np.random.randn(len(modulated)) + 1j * np.random.randn(len(modulated)))
+        noised_coded   = modulated + noise
 
         # Demodulation
         demodulated_hard = modem.demodulate(noised_coded, demod_type='hard')
@@ -61,8 +57,8 @@ k = np.log2(M)                 # number of bit per modulation symbol
 rate = 1/2                     # code rate
 modem = modulation.PSKModem(M) # M-PSK modem initialization 
 
-test_range = range(1, 11)
-N_c = 1000 # number of trials
+test_range = range(1, 11)  # SNR range in dB
+N_c = 100000               # number of trials for each SNR value
 
 # 使用 multiprocessing.Pool 並行處理
 pool = Pool()
@@ -71,7 +67,7 @@ start_time = time.time()
 
 for trellis in trellises:
     for snrdB in test_range:
-        args = (snrdB, N, N_c, trellis, modem, rate)
+        args = (snrdB, N, int(N_c/len(trellises)), trellis, modem, rate)
         results.append(pool.apply_async(simulate, args=(args,)))
 
 pool.close()
@@ -80,6 +76,7 @@ pool.join()
 BERs_hard = {i: [] for i in range(4)}
 BERs_uncoded = {i: [] for i in range(4)}
 
+# Get results
 for i, result in enumerate(results):
     mean_BER_hard = result.get()
     trellis_index = i // len(test_range)
