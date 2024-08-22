@@ -19,7 +19,7 @@ def generate_data(test, message_cnt, code_type):
         BER_uncoded, BER_hard = ds.create_received_pattern(message_cnt, SNR_data, test=test, code_type=code_type)
         BERs_uncoded.append(BER_uncoded)
         BERs_hard.append(BER_hard)
-    print(BERs_uncoded)
+    # print(BERs_uncoded)
 
 
     if code_type == 5: code_type = "mix"
@@ -33,7 +33,7 @@ def generate_data(test, message_cnt, code_type):
 
 
     with open(uncoded_BER_path, 'wb') as f:
-        print(f"Saving Uncoded BER: {uncoded_BER_path}")
+        # print(f"Saving Uncoded BER: {uncoded_BER_path}")
         pickle.dump(BERs_uncoded, f)
     
 
